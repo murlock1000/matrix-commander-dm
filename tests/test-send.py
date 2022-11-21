@@ -1,18 +1,18 @@
 #!/usr/bin/python3
 
-r"""test-send.py.
-This is a simple test program.
-Furthermore it is an example program demonstrating how 'matrix-commander'
-can be called from a Python program.
+r"""send.py.
+This program uses the matrix-commander actions to send DM messages to a user.
+It first creates a DM room if one does not exist.
 """
 
 # isort: skip_file
 # isort: off
+import argparse
+import asyncio
 from datetime import datetime
 import sys
 import os
 
-# print(f"Default path is: {sys.path}")
 # importing matrix_commander module
 try:
     # if installed via pip
@@ -31,36 +31,78 @@ except:
         main,
     )  # nopep8 # isort: skip
 
-now = datetime.now().strftime("%Y%m%d-%H%M%S")
+parser = argparse.ArgumentParser()
 
-# to make test self-contained, create the test file here inside Python
-TESTFILE = "test.txt"
-with open(TESTFILE, "w") as f:
-    f.write("content of test.txt")
+parser.add_argument("-u", required=True)
+
+args, unknown = parser.parse_known_args()
+users = [args.u]
+
+for idx, arg in enumerate(sys.argv):
+    if arg =="-u":
+        sys.argv = sys.argv[:idx] + sys.argv[idx+2:]
+        break
+
 # set up some test arguments
-print(f"Running test program: {sys.argv[0]}")
-print(f"Current working directory is: {os.getcwd()}")
-print(f"Path is: {sys.path}")
-print(f"Arguments that are passed on to matrix-commander are: {sys.argv[1:]}")
+#print(f"Running test program: {sys.argv[0]}")
+#print(f"Current working directory is: {os.getcwd()}")
+#print(f"Path is: {sys.path}")
+#print(f"Arguments that are passed on to matrix-commander are: {sys.argv[1:]}")
 sys.argv[0] = "matrix-commander"
-sys.argv.extend(["--version"])
-sys.argv.extend(["--message", f"Hello World @ {now}!"])
-sys.argv.extend(["--file", TESTFILE])
-sys.argv.extend(["--print-event-id"])
-# sys.argv.extend(["--debug"])
+cached_args = sys.argv[:]
+sys.argv = sys.argv[:1]
+#sys.argv.extend(["--debug"])
+
 # Github Action Workflow differs from local test as Github Action env
 # pipes a "" into the input of the program.
-print(f"Testing with these arguments: {sys.argv}")
-try:
-    ret = matrix_commander.main()
-    if ret == 0:
-        print("matrix_commander finished successfully.")
+def execute_commander():
+    #print(f"Testing with these arguments: {sys.argv}")
+    try:
+        ret = matrix_commander.main()
+        if ret == 0:
+            print("matrix_commander finished successfully.")
+        else:
+            print(
+                f"matrix_commander failed with {ret} error{'' if ret == 1 else 's'}."
+            )
+    except Exception as e:
+        print(f"Exception happened: {e}")
+        ret = 99
+    return ret
+
+if ret:=execute_commander() !=0:
+    exit(ret)
+
+event_loop = asyncio.new_event_loop()
+res_room = ""
+async def main(users):
+    
+    client = matrix_commander.gs.client
+    credentials = matrix_commander.gs.credentials
+    
+    rooms = await matrix_commander.determine_dm_rooms(users, client, credentials)
+    if len(rooms) == 0:
+        d = vars(matrix_commander.gs.pa)
+        d["room_dm_create"] = users
+        res_room = await matrix_commander.action_room_dm_create(client, credentials)
+        res_rooms = [res_room]
     else:
-        print(
-            f"matrix_commander failed with {ret} error{'' if ret == 1 else 's'}."
-        )
-except Exception as e:
-    print(f"Exception happened: {e}")
-    ret = 99
-os.remove(TESTFILE)
+        res_rooms = rooms
+
+    # Close connections
+    await matrix_commander.gs.client.close()
+    return res_rooms
+
+res_rooms = event_loop.run_until_complete(main(users))
+room = res_rooms[-1]
+event_loop.close()
+
+sys.argv = cached_args
+sys.argv.extend(["-r", room])
+
+print(f"Arguments that are passed on to matrix-commander are: {sys.argv[:]}")
+if ret:=execute_commander() !=0:
+    exit(ret)
+
+#os.remove(TESTFILE)
 exit(ret)

@@ -3594,6 +3594,7 @@ async def action_room_dm_create(client: AsyncClient, credentials: dict):
                     json_spec=json_spec,
                 )
             index = index + 1
+            return resp.room_id
     except Exception:
         gs.log.error("DM room creation failed. Sorry.")
         gs.err_count += 1
